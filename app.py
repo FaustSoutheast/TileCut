@@ -7,7 +7,7 @@ from shapely.geometry import Polygon
 # Налаштування сторінки
 st.set_page_config(page_title="TileCut Optima", layout="wide")
 
-# Стилізація для професійного вигляду
+# Стилізація
 st.markdown("""
     <style>
     .main { background-color: #0e1117; }
@@ -16,15 +16,12 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- ЗАГОЛОВОК ТА ДИСКЛЕЙМЕР ---
 st.title("TileCut Optima")
 st.info("**Застереження:** Цей сайт надає поради для приблизного моделювання. Результати є рекомендаційними і не замінюють професійний інженерний план.")
 
-# --- SIDEBAR (НАЛАШТУВАННЯ) ---
 with st.sidebar:
     st.header("Налаштування")
     
-    # 1. ФОРМА ПРИМІЩЕННЯ
     st.subheader("1. Параметри приміщення")
     room_type = st.selectbox("Оберіть форму приміщення:", 
                             ["Прямокутник", "Г-подібна", "Довільна форма (точки)"])
@@ -42,7 +39,6 @@ with st.sidebar:
         b = st.number_input("Стіна B (см) - загальна ширина", value=400)
         c = st.number_input("Стіна C (см) - виріз глибина", value=200)
         d = st.number_input("Стіна D (см) - виріз ширина", value=200)
-        # Розрахунок координат Г-форми
         room_coords = [(0,0), (a,0), (a, b-c), (a-d, b-c), (a-d, b), (0,b)]
 
     elif room_type == "Довільна форма (точки)":
@@ -51,10 +47,8 @@ with st.sidebar:
             [{"Вправо (X)": 0, "Вгору (Y)": 0}, {"Вправо (X)": 300, "Вгору (Y)": 0}, {"Вправо (X)": 150, "Вгору (Y)": 200}],
             num_rows="dynamic"
         )
-        # ВИПРАВЛЕНО: Фільтруємо порожні значення (None), коли користувач додає новий рядок у таблицю
         room_coords = [(row["Вправо (X)"], row["Вгору (Y)"]) for row in coords_data if row["Вправо (X)"] is not None and row["Вгору (Y)"] is not None]
 
-    # 2. МЕНЕДЖЕР ОТВОРІВ
     st.divider()
     st.subheader("2. Отвори (короби, труби)")
     if 'holes' not in st.session_state:
@@ -76,7 +70,6 @@ with st.sidebar:
                 st.rerun()
     st.session_state.holes = updated_holes
 
-    # 3. МАТЕРІАЛИ ТА БЮДЖЕТ
     st.divider()
     st.subheader("3. Матеріали та Бюджет")
     tile_w = st.number_input("Ширина плитки (см)", value=60)
@@ -86,7 +79,6 @@ with st.sidebar:
     budget = st.number_input("Ваш бюджет на проект (грн)", value=20000)
     labor_cost = st.slider("Вартість роботи майстра (грн/м²)", 400, 1000, 650)
 
-# --- ГОЛОВНЕ ВІКНО (ВІЗУАЛІЗАЦІЯ) ---
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -94,17 +86,23 @@ with col1:
     
     if len(room_coords) > 2:
         try:
-            # Створення геометрії
             room_poly = Polygon(room_coords)
             
-            # Малювання
             fig, ax = plt.subplots(figsize=(8, 6))
             fig.patch.set_facecolor('#0e1117')
             ax.set_facecolor('#1a1c24')
             
-            # Малюємо кімнату
-            x_pts, y_pts = room_poly.exterior.xy
-            ax.fill(x_pts, y_pts, alpha=0.3, fc='#deff9a', ec='#deff9a', lw=2, label="Приміщення")
+            # БЕЗПЕЧНЕ МАЛЮВАННЯ (На випадок складних форм з отворами)
+            if room_poly.geom_type == 'Polygon':
+                polys_to_draw = [room_poly]
+            elif room_poly.geom_type == 'MultiPolygon':
+                polys_to_draw = list(room_poly.geoms)
+            else:
+                polys_to_draw = []
+                
+            for poly in polys_to_draw:
+                x_pts, y_pts = poly.exterior.xy
+                ax.fill(x_pts, y_pts, alpha=0.3, fc='#deff9a', ec='#deff9a', lw=2)
             
             # Малюємо отвори
             for hole in st.session_state.holes:
@@ -133,15 +131,12 @@ with col2:
         
         st.metric("Чиста площа підлоги", f"{net_area:.2f} м²") 
         
-        # Приблизна кількість плитки (без оптимізації, площа + 10%)
         tile_area = (tile_w * tile_h) / 10000
         est_tiles = int((net_area / tile_area) * 1.1)
         
         st.metric("Орієнтовна кількість плитки", f"{est_tiles} шт")
         
         st.divider()
-        
-        # Бюджетний аналіз
         total_labor = net_area * labor_cost
         remaining_for_tiles = budget - total_labor
         
@@ -151,7 +146,6 @@ with col2:
         else:
             st.error("Бюджет замалий навіть для оплати роботи майстра.")
 
-# --- ВЕЛИКА КНОПКА ЗАПУСКУ ---
 st.divider()
 col_empty1, col_button, col_empty2 = st.columns([1, 2, 1])
 
@@ -161,7 +155,6 @@ with col_button:
             try:
                 import math
                 
-                # --- ПІДГОТОВКА ГЕОМЕТРІЇ ---
                 room_poly = Polygon(room_coords)
                 for hole in st.session_state.holes:
                     hx = [hole['x'], hole['x'] + hole['w'], hole['x'] + hole['w'], hole['x']]
@@ -177,7 +170,6 @@ with col_button:
                     whole = []
                     cuts = []
                     
-                    # ВИПРАВЛЕНО: Додано буфер (x2) на відступ, щоб перекрити "голі краї" при зсуві сітки
                     start_x = minx - (step_x * 2) + offset_x
                     end_x = maxx + step_x
                     start_y = miny - (step_y * 2) + offset_y
@@ -190,7 +182,17 @@ with col_button:
                             tile = Polygon([(x, y), (x+tile_w, y), (x+tile_w, y+tile_h), (x, y+tile_h)])
                             if tile.intersects(room_poly):
                                 intersection = tile.intersection(room_poly)
-                                # Відкидаємо фантомні перетини (лінії/точки)
+                                
+                                # ФІКС: Очищуємо геометрію від фантомних ліній дотику
+                                try:
+                                    intersection = intersection.buffer(0)
+                                except:
+                                    pass
+                                
+                                if intersection.is_empty or intersection.area < 0.1:
+                                    y += step_y
+                                    continue
+                                
                                 if intersection.geom_type not in ['Polygon', 'MultiPolygon']:
                                     y += step_y
                                     continue
@@ -210,7 +212,6 @@ with col_button:
                     tiles_needed_for_cuts = int(math.ceil((total_cut_area * 1.25) / tile_area))
                     return max(1, tiles_needed_for_cuts)
 
-                # --- ДЕТЕРМІНОВАНИЙ ПОШУК (Grid Search) ТА ЕРОЗІЯ ---
                 st.markdown("### Математичний розрахунок (Grid Search)")
                 progress_bar = st.progress(0)
                 status_text = st.empty()
@@ -235,17 +236,14 @@ with col_button:
                         
                         w_tiles, c_tiles = generate_grid(ox, oy)
                         
-                        # 1. Економіка (Мінімум кількості фрагментів)
                         eco_score = len(c_tiles)
                         if eco_score < best_eco_score:
                             best_eco_score = eco_score
                             best_eco_x, best_eco_y = ox, oy
                             
-                        # 2. Естетика з використанням ЕРОЗІЇ
                         aes_score = 0
                         for c in c_tiles:
                             eroded_cut = c.buffer(-2.49)
-                            
                             if eroded_cut.is_empty:
                                 aes_score -= 1000 
                             else:
@@ -262,7 +260,6 @@ with col_button:
                 bal_x, bal_y = (best_eco_x + best_aes_x) / 2, (best_eco_y + best_aes_y) / 2
                 bal_whole, bal_cuts = generate_grid(bal_x, bal_y)
 
-                # --- ВКЛАДКИ З РЕЗУЛЬТАТАМИ ---
                 tab1, tab2, tab3 = st.tabs(["Економний", "Безпечний/Естетичний", "Баланс"])
                 
                 def draw_result_plot(whole_tiles, cut_tiles, ox, oy, title_color, strategy_name, room_type):
@@ -270,8 +267,22 @@ with col_button:
                     fig.patch.set_facecolor('#0e1117')
                     ax.set_facecolor('#1a1c24')
                     
-                    rx, ry = room_poly.exterior.xy
-                    ax.plot(rx, ry, color='white', linewidth=2)
+                    # БЕЗПЕЧНЕ МАЛЮВАННЯ З ОТВОРАМИ
+                    if room_poly.geom_type == 'Polygon':
+                        polys_to_draw = [room_poly]
+                    elif room_poly.geom_type == 'MultiPolygon':
+                        polys_to_draw = list(room_poly.geoms)
+                    else:
+                        polys_to_draw = []
+                        
+                    for poly in polys_to_draw:
+                        # Зовнішній контур
+                        rx, ry = poly.exterior.xy
+                        ax.plot(rx, ry, color='white', linewidth=2)
+                        # Внутрішні контури (отвори)
+                        for interior in poly.interiors:
+                            ix, iy = interior.xy
+                            ax.plot(ix, iy, color='#ff4b4b', linewidth=2, linestyle='--')
                     
                     for t in whole_tiles:
                         tx, ty = t.exterior.xy
@@ -293,9 +304,9 @@ with col_button:
                     extra_tiles = calculate_packing(cut_tiles)
                     total_tiles = len(whole_tiles) + extra_tiles
                     
-                    room_area = room_poly.area / 10000
+                    room_area_val = room_poly.area / 10000
                     bought_area = (total_tiles * tile_w * tile_h) / 10000
-                    waste_pct = ((bought_area - room_area) / bought_area) * 100 if bought_area > 0 else 0
+                    waste_pct = ((bought_area - room_area_val) / bought_area) * 100 if bought_area > 0 else 0
                     
                     st.markdown(f"### Аналітика результатів")
                     c1, c2, c3, c4 = st.columns(4)
