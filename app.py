@@ -51,7 +51,8 @@ with st.sidebar:
             [{"Вправо (X)": 0, "Вгору (Y)": 0}, {"Вправо (X)": 300, "Вгору (Y)": 0}, {"Вправо (X)": 150, "Вгору (Y)": 200}],
             num_rows="dynamic"
         )
-        room_coords = [(row["Вправо (X)"], row["Вгору (Y)"]) for row in coords_data]
+        # ВИПРАВЛЕНО: Фільтруємо порожні значення (None), коли користувач додає новий рядок у таблицю
+        room_coords = [(row["Вправо (X)"], row["Вгору (Y)"]) for row in coords_data if row["Вправо (X)"] is not None and row["Вгору (Y)"] is not None]
 
     # 2. МЕНЕДЖЕР ОТВОРІВ
     st.divider()
@@ -102,8 +103,8 @@ with col1:
             ax.set_facecolor('#1a1c24')
             
             # Малюємо кімнату
-            x, y = room_poly.exterior.xy
-            ax.fill(x, y, alpha=0.3, fc='#deff9a', ec='#deff9a', lw=2, label="Приміщення")
+            x_pts, y_pts = room_poly.exterior.xy
+            ax.fill(x_pts, y_pts, alpha=0.3, fc='#deff9a', ec='#deff9a', lw=2, label="Приміщення")
             
             # Малюємо отвори
             for hole in st.session_state.holes:
@@ -130,7 +131,6 @@ with col2:
         holes_area = sum([(h['w'] * h['h']) for h in st.session_state.holes]) / 10000
         net_area = area_m2 - holes_area
         
-        # ВИПРАВЛЕНО: прибрав пробіл у .2f
         st.metric("Чиста площа підлоги", f"{net_area:.2f} м²") 
         
         # Приблизна кількість плитки (без оптимізації, площа + 10%)
@@ -153,7 +153,6 @@ with col2:
 
 # --- ВЕЛИКА КНОПКА ЗАПУСКУ ---
 st.divider()
-# Робимо 3 колонки, щоб кнопка була рівно по центру
 col_empty1, col_button, col_empty2 = st.columns([1, 2, 1])
 
 with col_button:
@@ -177,10 +176,17 @@ with col_button:
                 def generate_grid(offset_x, offset_y):
                     whole = []
                     cuts = []
-                    x = minx - step_x + offset_x
-                    while x < maxx:
-                        y = miny - step_y + offset_y
-                        while y < maxy:
+                    
+                    # ВИПРАВЛЕНО: Додано буфер (x2) на відступ, щоб перекрити "голі краї" при зсуві сітки
+                    start_x = minx - (step_x * 2) + offset_x
+                    end_x = maxx + step_x
+                    start_y = miny - (step_y * 2) + offset_y
+                    end_y = maxy + step_y
+                    
+                    x = start_x
+                    while x < end_x:
+                        y = start_y
+                        while y < end_y:
                             tile = Polygon([(x, y), (x+tile_w, y), (x+tile_w, y+tile_h), (x, y+tile_h)])
                             if tile.intersects(room_poly):
                                 intersection = tile.intersection(room_poly)
@@ -199,11 +205,7 @@ with col_button:
 
                 def calculate_packing(cuts):
                     if not cuts: return 0
-                    total_cut_area = 0
-                    for c in cuts:
-                        # ВИПРАВЛЕНО: Використовуємо реальну площу обрізка, а не його Bounding Box
-                        total_cut_area += c.area 
-                        
+                    total_cut_area = sum([c.area for c in cuts])
                     tile_area = tile_w * tile_h
                     tiles_needed_for_cuts = int(math.ceil((total_cut_area * 1.25) / tile_area))
                     return max(1, tiles_needed_for_cuts)
@@ -216,7 +218,6 @@ with col_button:
                 best_eco_x, best_eco_y, best_eco_score = 0, 0, float('inf')
                 best_aes_x, best_aes_y, best_aes_score = 0, 0, float('-inf')
                 
-                # Крок сітки для перебору (кожні 5 см). Це гарантує стабільний результат!
                 search_step = 5
                 x_offsets = [i for i in range(0, int(tile_w), search_step)]
                 y_offsets = [i for i in range(0, int(tile_h), search_step)]
@@ -228,7 +229,6 @@ with col_button:
                     for oy in y_offsets:
                         current_iteration += 1
                         
-                        # Оновлюємо статус не кожну мілісекунду, щоб не гальмувати Streamlit
                         if current_iteration % 5 == 0 or current_iteration == total_iterations:
                             status_text.text(f"Аналіз сценаріїв розкладки: {current_iteration} з {total_iterations}...")
                             progress_bar.progress(current_iteration / total_iterations)
@@ -241,16 +241,15 @@ with col_button:
                             best_eco_score = eco_score
                             best_eco_x, best_eco_y = ox, oy
                             
-                        # 2. Естетика з використанням ЕРОЗІЇ (Negative Buffer)
+                        # 2. Естетика з використанням ЕРОЗІЇ
                         aes_score = 0
                         for c in c_tiles:
-                            # Зрізаємо ~2.5 см з усіх країв. Якщо фігура тонша за 5 см - вона зникне.
                             eroded_cut = c.buffer(-2.49)
                             
                             if eroded_cut.is_empty:
-                                aes_score -= 1000 # Жорсткий штраф за тонку смужку!
+                                aes_score -= 1000 
                             else:
-                                aes_score += c.area # Нагорода за великі товсті шматки
+                                aes_score += c.area 
                         
                         if aes_score > best_aes_score:
                             best_aes_score = aes_score
@@ -258,7 +257,6 @@ with col_button:
 
                 status_text.success("Оптимізацію успішно завершено! Знайдено абсолютний оптимум.")
 
-                # Генеруємо фінальні сітки за найкращими знайденими зміщеннями
                 eco_whole, eco_cuts = generate_grid(best_eco_x, best_eco_y)
                 aes_whole, aes_cuts = generate_grid(best_aes_x, best_aes_y)
                 bal_x, bal_y = (best_eco_x + best_aes_x) / 2, (best_eco_y + best_aes_y) / 2
@@ -321,9 +319,7 @@ with col_button:
 
                     st.info(f"**Логіка розкладки:** {strat_desc}")
                     
-                    # --- АДАПТИВНА ІНСТРУКЦІЯ ---
                     if room_type in ["Прямокутник", "Г-подібна"]:
-                        # Стара інструкція для прямих кутів
                         if ox == 0 and oy == 0:
                             start_action = "Візьміть **ЦІЛУ плитку** і встановіть її рівно в кут. Жодних підрізок для стартової точки не потрібно!"
                         else:
@@ -337,7 +333,6 @@ with col_button:
                         5.  **Фінальний етап:** Заміряйте та виріжте фрагменти для примикання до стін.
                         """)
                     else:
-                        # Нова інструкція для довільних форм (непрямі кути)
                         st.markdown(f"""
                         *Оскільки приміщення має нестандартну форму, укладання починається не з кута, а за базовими осями.*
                         1.  **Розмітка лазером:** Знайдіть найлівішу та найнижчу точки кімнати. Відступіть від них **{ox:.1f} см вправо** та **{oy:.1f} см вгору**.
@@ -347,7 +342,6 @@ with col_button:
                         5.  **Підрізка косих кутів:** Всі елементи, що примикають до косих стін, вирізаються за місцем за допомогою малки (кутоміра) або картонних шаблонів в останню чергу.
                         """)
 
-                # 2. ДОДАНО передачу room_type у функції малювання
                 with tab1:
                     draw_result_plot(eco_whole, eco_cuts, best_eco_x, best_eco_y, "#FFC107", "eco", room_type)
                 with tab2:
@@ -356,7 +350,7 @@ with col_button:
                     draw_result_plot(bal_whole, bal_cuts, bal_x, bal_y, "#03A9F4", "bal", room_type)
 
             except Exception as e:
-                st.error(f"Сталася помилка: {e}")
+                st.error(f"Сталася помилка під час оптимізації: {e}")
 
         else:
             st.error("Спочатку задайте координати приміщення!")
