@@ -212,7 +212,7 @@ with col_button:
                     tiles_needed_for_cuts = int(math.ceil((total_cut_area * 1.25) / tile_area))
                     return max(1, tiles_needed_for_cuts)
 
-                st.markdown("### Математичний розрахунок (Grid Search)")
+                st.markdown("### Математичний розрахунок")
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
@@ -315,7 +315,7 @@ with col_button:
                     c3.metric("Витрата на підрізку", f"{extra_tiles} шт")
                     c4.metric("Всього купити", f"{total_tiles} шт")
                     
-                    st.markdown(f"**Коефіцієнт відходів:** <span style='color:{title_color}; font-size:22px; font-weight:bold;'>{waste_pct:.1f}%</span>", unsafe_allow_html=True)
+                    st.markdown(f"**Відсоток відходів:** <span style='color:{title_color}; font-size:22px; font-weight:bold;'>{waste_pct:.1f}%</span>", unsafe_allow_html=True)
                     st.pyplot(fig)
                     plt.close(fig)
                     
