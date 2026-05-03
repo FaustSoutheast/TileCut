@@ -150,7 +150,7 @@ st.divider()
 col_empty1, col_button, col_empty2 = st.columns([1, 2, 1])
 
 with col_button:
-    if st.button("Запустити Генетичний алгоритм", use_container_width=True):
+    if st.button("Запустити алгоритм", use_container_width=True):
         if len(room_coords) > 2:
             try:
                 import math
