@@ -4,10 +4,8 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from shapely.geometry import Polygon
 
-# Налаштування сторінки
 st.set_page_config(page_title="TileCut Optima", layout="wide")
 
-# Стилізація
 st.markdown("""
     <style>
     .main { background-color: #0e1117; }
@@ -79,6 +77,7 @@ with st.sidebar:
     budget = st.number_input("Ваш бюджет на проект (грн)", value=20000)
     labor_cost = st.slider("Вартість роботи майстра (грн/м²)", 400, 1000, 650)
 
+
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -88,16 +87,13 @@ with col1:
         try:
             room_poly = Polygon(room_coords)
             
-            # --- НОВИЙ КОД: Перевірка на вироджений полігон ---
             if room_poly.area <= 0:
                 st.error("Помилка: Введені точки лежать на одній лінії і не утворюють площини (площа нульова).")
             else:
-                # --- Ваш існуючий код малювання зміщується на один Tab вправо ---
                 fig, ax = plt.subplots(figsize=(8, 6))
                 fig.patch.set_facecolor('#0e1117')
                 ax.set_facecolor('#1a1c24')
                 
-                # БЕЗПЕЧНЕ МАЛЮВАННЯ (На випадок складних форм з отворами)
                 if room_poly.geom_type == 'Polygon':
                     polys_to_draw = [room_poly]
                 elif room_poly.geom_type == 'MultiPolygon':
@@ -109,7 +105,6 @@ with col1:
                     x_pts, y_pts = poly.exterior.xy
                     ax.fill(x_pts, y_pts, alpha=0.3, fc='#deff9a', ec='#deff9a', lw=2)
                 
-                # Малюємо отвори
                 for hole in st.session_state.holes:
                     hx = [hole['x'], hole['x'] + hole['w'], hole['x'] + hole['w'], hole['x']]
                     hy = [hole['y'], hole['y'], hole['y'] + hole['h'], hole['y'] + hole['h']]
@@ -126,35 +121,39 @@ with col1:
     else:
         st.warning("Додайте більше точок, щоб побачити креслення.")
 
+
 with col2:
     st.subheader("Попередні розрахунки")
     
     if len(room_coords) > 2:
-        room_poly = Polygon(room_coords)
-        
-        if room_poly.area > 0:
-            area_m2 = room_poly.area / 10000
-            holes_area = sum([(h['w'] * h['h']) for h in st.session_state.holes]) / 10000
-            net_area = area_m2 - holes_area
-            
-            st.metric("Чиста площа підлоги", f"{net_area:.2f} м²") 
-            
-            tile_area = (tile_w * tile_h) / 10000
-            est_tiles = int((net_area / tile_area) * 1.1)
-            
-            st.metric("Орієнтовна кількість плитки", f"{est_tiles} шт")
-            
-            st.divider()
-            total_labor = net_area * labor_cost
-            remaining_for_tiles = budget - total_labor
-            
-            if remaining_for_tiles > 0:
-                price_per_tile = remaining_for_tiles / est_tiles
-                st.success(f"Можна обрати плитку до **{price_per_tile:.0f} грн/шт**")
+        try:
+            room_poly = Polygon(room_coords)
+            if room_poly.area > 0:
+                area_m2 = room_poly.area / 10000
+                holes_area = sum([(h['w'] * h['h']) for h in st.session_state.holes]) / 10000
+                net_area = area_m2 - holes_area
+                
+                st.metric("Чиста площа підлоги", f"{net_area:.2f} м²") 
+                
+                tile_area = (tile_w * tile_h) / 10000
+                est_tiles = int((net_area / tile_area) * 1.1)
+                
+                st.metric("Орієнтовна кількість плитки", f"{est_tiles} шт")
+                
+                st.divider()
+                total_labor = net_area * labor_cost
+                remaining_for_tiles = budget - total_labor
+                
+                if remaining_for_tiles > 0:
+                    price_per_tile = remaining_for_tiles / est_tiles
+                    st.success(f"Можна обрати плитку до **{price_per_tile:.0f} грн/шт**")
+                else:
+                    st.error("Бюджет замалий навіть для оплати роботи майстра.")
             else:
-                st.error("Бюджет замалий навіть для оплати роботи майстра.")
-        else:
-            st.warning("Площа приміщення нульова, розрахунок неможливий.")
+                st.warning("Площа приміщення нульова, розрахунок неможливий.")
+        except Exception:
+            pass
+
 
 st.divider()
 col_empty1, col_button, col_empty2 = st.columns([1, 2, 1])
@@ -162,218 +161,213 @@ col_empty1, col_button, col_empty2 = st.columns([1, 2, 1])
 with col_button:
     if st.button("Запустити алгоритм", use_container_width=True):
         if len(room_coords) > 2:
-            room_poly = Polygon(room_coords)
-            
-            if room_poly.area <= 0:
-                st.error("Алгоритм зупинено: введені точки лежать на одній лінії. Кімната не має площі.")
-            else:
-                try:
-                    import math
-                
+            try:
                 room_poly = Polygon(room_coords)
-                for hole in st.session_state.holes:
-                    hx = [hole['x'], hole['x'] + hole['w'], hole['x'] + hole['w'], hole['x']]
-                    hy = [hole['y'], hole['y'], hole['y'] + hole['h'], hole['y'] + hole['h']]
-                    hole_poly = Polygon(zip(hx, hy))
-                    room_poly = room_poly.difference(hole_poly)
                 
-                minx, miny, maxx, maxy = room_poly.bounds
-                step_x = tile_w + (grout / 10)
-                step_y = tile_h + (grout / 10)
-                
-                def generate_grid(offset_x, offset_y):
-                    whole = []
-                    cuts = []
+                if room_poly.area <= 0:
+                    st.error("Алгоритм зупинено: введені точки лежать на одній лінії. Кімната не має площі.")
+                else:
+                    import math
                     
-                    start_x = minx - (step_x * 2) + offset_x
-                    end_x = maxx + step_x
-                    start_y = miny - (step_y * 2) + offset_y
-                    end_y = maxy + step_y
+                    for hole in st.session_state.holes:
+                        hx = [hole['x'], hole['x'] + hole['w'], hole['x'] + hole['w'], hole['x']]
+                        hy = [hole['y'], hole['y'], hole['y'] + hole['h'], hole['y'] + hole['h']]
+                        hole_poly = Polygon(zip(hx, hy))
+                        room_poly = room_poly.difference(hole_poly)
                     
-                    x = start_x
-                    while x < end_x:
-                        y = start_y
-                        while y < end_y:
-                            tile = Polygon([(x, y), (x+tile_w, y), (x+tile_w, y+tile_h), (x, y+tile_h)])
-                            if tile.intersects(room_poly):
-                                intersection = tile.intersection(room_poly)
-                                
-                                # ФІКС: Очищуємо геометрію від фантомних ліній дотику
-                                try:
-                                    intersection = intersection.buffer(0)
-                                except:
-                                    pass
-                                
-                                if intersection.is_empty or intersection.area < 0.1:
-                                    y += step_y
-                                    continue
-                                
-                                if intersection.geom_type not in ['Polygon', 'MultiPolygon']:
-                                    y += step_y
-                                    continue
-                                
-                                if intersection.area >= (tile_w * tile_h) * 0.99:
-                                    whole.append(tile)
-                                else:
-                                    cuts.append(intersection)
-                            y += step_y
-                        x += step_x
-                    return whole, cuts
+                    minx, miny, maxx, maxy = room_poly.bounds
+                    step_x = tile_w + (grout / 10)
+                    step_y = tile_h + (grout / 10)
+                    
+                    def generate_grid(offset_x, offset_y):
+                        whole = []
+                        cuts = []
+                        
+                        start_x = minx - (step_x * 2) + offset_x
+                        end_x = maxx + step_x
+                        start_y = miny - (step_y * 2) + offset_y
+                        end_y = maxy + step_y
+                        
+                        x = start_x
+                        while x < end_x:
+                            y = start_y
+                            while y < end_y:
+                                tile = Polygon([(x, y), (x+tile_w, y), (x+tile_w, y+tile_h), (x, y+tile_h)])
+                                if tile.intersects(room_poly):
+                                    intersection = tile.intersection(room_poly)
+                                    
+                                    try:
+                                        intersection = intersection.buffer(0)
+                                    except:
+                                        pass
+                                    
+                                    if intersection.is_empty or intersection.area < 0.1:
+                                        y += step_y
+                                        continue
+                                    
+                                    if intersection.geom_type not in ['Polygon', 'MultiPolygon']:
+                                        y += step_y
+                                        continue
+                                    
+                                    if intersection.area >= (tile_w * tile_h) * 0.99:
+                                        whole.append(tile)
+                                    else:
+                                        cuts.append(intersection)
+                                y += step_y
+                            x += step_x
+                        return whole, cuts
 
-                def calculate_packing(cuts):
-                    if not cuts: return 0
-                    total_cut_area = sum([c.area for c in cuts])
-                    tile_area = tile_w * tile_h
-                    tiles_needed_for_cuts = int(math.ceil((total_cut_area * 1.25) / tile_area))
-                    return max(1, tiles_needed_for_cuts)
+                    def calculate_packing(cuts):
+                        if not cuts: return 0
+                        total_cut_area = sum([c.area for c in cuts])
+                        tile_area = tile_w * tile_h
+                        tiles_needed_for_cuts = int(math.ceil((total_cut_area * 1.25) / tile_area))
+                        return max(1, tiles_needed_for_cuts)
 
-                st.markdown("### Математичний розрахунок")
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                best_eco_x, best_eco_y, best_eco_score = 0, 0, float('inf')
-                best_aes_x, best_aes_y, best_aes_score = 0, 0, float('-inf')
-                
-                search_step = 5
-                x_offsets = [i for i in range(0, int(tile_w), search_step)]
-                y_offsets = [i for i in range(0, int(tile_h), search_step)]
-                
-                total_iterations = len(x_offsets) * len(y_offsets)
-                current_iteration = 0
-                
-                for ox in x_offsets:
-                    for oy in y_offsets:
-                        current_iteration += 1
-                        
-                        if current_iteration % 5 == 0 or current_iteration == total_iterations:
-                            status_text.text(f"Аналіз сценаріїв розкладки: {current_iteration} з {total_iterations}...")
-                            progress_bar.progress(current_iteration / total_iterations)
-                        
-                        w_tiles, c_tiles = generate_grid(ox, oy)
-                        
-                        eco_score = len(c_tiles)
-                        if eco_score < best_eco_score:
-                            best_eco_score = eco_score
-                            best_eco_x, best_eco_y = ox, oy
+                    st.markdown("### Математичний розрахунок")
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    best_eco_x, best_eco_y, best_eco_score = 0, 0, float('inf')
+                    best_aes_x, best_aes_y, best_aes_score = 0, 0, float('-inf')
+                    
+                    search_step = 5
+                    x_offsets = [i for i in range(0, int(tile_w), search_step)]
+                    y_offsets = [i for i in range(0, int(tile_h), search_step)]
+                    
+                    total_iterations = len(x_offsets) * len(y_offsets)
+                    current_iteration = 0
+                    
+                    for ox in x_offsets:
+                        for oy in y_offsets:
+                            current_iteration += 1
                             
-                        aes_score = 0
-                        for c in c_tiles:
-                            eroded_cut = c.buffer(-2.49)
-                            if eroded_cut.is_empty:
-                                aes_score -= 1000 
-                            else:
-                                aes_score += c.area 
-                        
-                        if aes_score > best_aes_score:
-                            best_aes_score = aes_score
-                            best_aes_x, best_aes_y = ox, oy
-
-                status_text.success("Оптимізацію успішно завершено! Знайдено абсолютний оптимум.")
-
-                eco_whole, eco_cuts = generate_grid(best_eco_x, best_eco_y)
-                aes_whole, aes_cuts = generate_grid(best_aes_x, best_aes_y)
-                bal_x, bal_y = (best_eco_x + best_aes_x) / 2, (best_eco_y + best_aes_y) / 2
-                bal_whole, bal_cuts = generate_grid(bal_x, bal_y)
-
-                tab1, tab2, tab3 = st.tabs(["Економний", "Безпечний/Естетичний", "Баланс"])
-                
-                def draw_result_plot(whole_tiles, cut_tiles, ox, oy, title_color, strategy_name, room_type):
-                    fig, ax = plt.subplots(figsize=(10, 8))
-                    fig.patch.set_facecolor('#0e1117')
-                    ax.set_facecolor('#1a1c24')
-                    
-                    # БЕЗПЕЧНЕ МАЛЮВАННЯ З ОТВОРАМИ
-                    if room_poly.geom_type == 'Polygon':
-                        polys_to_draw = [room_poly]
-                    elif room_poly.geom_type == 'MultiPolygon':
-                        polys_to_draw = list(room_poly.geoms)
-                    else:
-                        polys_to_draw = []
-                        
-                    for poly in polys_to_draw:
-                        # Зовнішній контур
-                        rx, ry = poly.exterior.xy
-                        ax.plot(rx, ry, color='white', linewidth=2)
-                        # Внутрішні контури (отвори)
-                        for interior in poly.interiors:
-                            ix, iy = interior.xy
-                            ax.plot(ix, iy, color='#ff4b4b', linewidth=2, linestyle='--')
-                    
-                    for t in whole_tiles:
-                        tx, ty = t.exterior.xy
-                        ax.fill(tx, ty, alpha=0.5, fc='#4CAF50', ec='black', lw=1)
-                    
-                    for c in cut_tiles:
-                        if c.geom_type == 'Polygon':
-                            cx, cy = c.exterior.xy
-                            ax.fill(cx, cy, alpha=0.7, fc='#FFC107', ec='black', lw=1)
-                        elif c.geom_type == 'MultiPolygon':
-                            for geom in c.geoms:
-                                cx, cy = geom.exterior.xy
-                                ax.fill(cx, cy, alpha=0.7, fc='#FFC107', ec='black', lw=1)
+                            if current_iteration % 5 == 0 or current_iteration == total_iterations:
+                                status_text.text(f"Аналіз сценаріїв розкладки: {current_iteration} з {total_iterations}...")
+                                progress_bar.progress(current_iteration / total_iterations)
+                            
+                            w_tiles, c_tiles = generate_grid(ox, oy)
+                            
+                            eco_score = len(c_tiles)
+                            if eco_score < best_eco_score:
+                                best_eco_score = eco_score
+                                best_eco_x, best_eco_y = ox, oy
                                 
-                    ax.set_aspect('equal')
-                    ax.tick_params(colors='white')
-                    plt.grid(color='#333', linestyle='--', alpha=0.5)
-                    
-                    extra_tiles = calculate_packing(cut_tiles)
-                    total_tiles = len(whole_tiles) + extra_tiles
-                    
-                    room_area_val = room_poly.area / 10000
-                    bought_area = (total_tiles * tile_w * tile_h) / 10000
-                    waste_pct = ((bought_area - room_area_val) / bought_area) * 100 if bought_area > 0 else 0
-                    
-                    st.markdown(f"### Аналітика результатів")
-                    c1, c2, c3, c4 = st.columns(4)
-                    c1.metric("Цілі плитки", f"{len(whole_tiles)} шт")
-                    c2.metric("Фрагменти підрізки", f"{len(cut_tiles)} шт")
-                    c3.metric("Витрата на підрізку", f"{extra_tiles} шт")
-                    c4.metric("Всього купити", f"{total_tiles} шт")
-                    
-                    st.markdown(f"**Відсоток відходів:** <span style='color:{title_color}; font-size:22px; font-weight:bold;'>{waste_pct:.1f}%</span>", unsafe_allow_html=True)
-                    st.pyplot(fig)
-                    plt.close(fig)
-                    
-                    st.subheader("Покрокова інструкція для майстра")
-                    
-                    if strategy_name == "eco":
-                        strat_desc = "Цей метод зміщує всі обрізки до далеких стін для швидкості укладання."
-                    elif strategy_name == "aes":
-                        strat_desc = "Метод відцентровує розкладку, щоб уникнути тонких смужок (менше 5 см) біля стін та отворів."
-                    else:
-                        strat_desc = "Цей метод є золотою серединою: він уникає екстремально тонких смужок, але не роздуває бюджет."
+                            aes_score = 0
+                            for c in c_tiles:
+                                eroded_cut = c.buffer(-2.49)
+                                if eroded_cut.is_empty:
+                                    aes_score -= 1000 
+                                else:
+                                    aes_score += c.area 
+                            
+                            if aes_score > best_aes_score:
+                                best_aes_score = aes_score
+                                best_aes_x, best_aes_y = ox, oy
 
-                    st.info(f"**Логіка розкладки:** {strat_desc}")
+                    status_text.success("Оптимізацію успішно завершено! Знайдено абсолютний оптимум.")
+
+                    eco_whole, eco_cuts = generate_grid(best_eco_x, best_eco_y)
+                    aes_whole, aes_cuts = generate_grid(best_aes_x, best_aes_y)
+                    bal_x, bal_y = (best_eco_x + best_aes_x) / 2, (best_eco_y + best_aes_y) / 2
+                    bal_whole, bal_cuts = generate_grid(bal_x, bal_y)
+
+                    tab1, tab2, tab3 = st.tabs(["Економний", "Безпечний/Естетичний", "Баланс"])
                     
-                    if room_type in ["Прямокутник", "Г-подібна"]:
-                        if ox == 0 and oy == 0:
-                            start_action = "Візьміть **ЦІЛУ плитку** і встановіть її рівно в кут. Жодних підрізок для стартової точки не потрібно!"
+                    def draw_result_plot(whole_tiles, cut_tiles, ox, oy, title_color, strategy_name, room_type):
+                        fig, ax = plt.subplots(figsize=(10, 8))
+                        fig.patch.set_facecolor('#0e1117')
+                        ax.set_facecolor('#1a1c24')
+                        
+                        if room_poly.geom_type == 'Polygon':
+                            polys_to_draw = [room_poly]
+                        elif room_poly.geom_type == 'MultiPolygon':
+                            polys_to_draw = list(room_poly.geoms)
                         else:
-                            start_action = f"Відріжте від цілої плитки кутовий елемент розміром **Ширина {ox:.1f} см, Довжина {oy:.1f} см**. Встановіть його у кут."
+                            polys_to_draw = []
+                            
+                        for poly in polys_to_draw:
+                            rx, ry = poly.exterior.xy
+                            ax.plot(rx, ry, color='white', linewidth=2)
+                            for interior in poly.interiors:
+                                ix, iy = interior.xy
+                                ax.plot(ix, iy, color='#ff4b4b', linewidth=2, linestyle='--')
+                        
+                        for t in whole_tiles:
+                            tx, ty = t.exterior.xy
+                            ax.fill(tx, ty, alpha=0.5, fc='#4CAF50', ec='black', lw=1)
+                        
+                        for c in cut_tiles:
+                            if c.geom_type == 'Polygon':
+                                cx, cy = c.exterior.xy
+                                ax.fill(cx, cy, alpha=0.7, fc='#FFC107', ec='black', lw=1)
+                            elif c.geom_type == 'MultiPolygon':
+                                for geom in c.geoms:
+                                    cx, cy = geom.exterior.xy
+                                    ax.fill(cx, cy, alpha=0.7, fc='#FFC107', ec='black', lw=1)
+                                    
+                        ax.set_aspect('equal')
+                        ax.tick_params(colors='white')
+                        plt.grid(color='#333', linestyle='--', alpha=0.5)
+                        
+                        extra_tiles = calculate_packing(cut_tiles)
+                        total_tiles = len(whole_tiles) + extra_tiles
+                        
+                        room_area_val = room_poly.area / 10000
+                        bought_area = (total_tiles * tile_w * tile_h) / 10000
+                        waste_pct = ((bought_area - room_area_val) / bought_area) * 100 if bought_area > 0 else 0
+                        
+                        st.markdown(f"### Аналітика результатів")
+                        c1, c2, c3, c4 = st.columns(4)
+                        c1.metric("Цілі плитки", f"{len(whole_tiles)} шт")
+                        c2.metric("Фрагменти підрізки", f"{len(cut_tiles)} шт")
+                        c3.metric("Витрата на підрізку", f"{extra_tiles} шт")
+                        c4.metric("Всього купити", f"{total_tiles} шт")
+                        
+                        st.markdown(f"**Відсоток відходів:** <span style='color:{title_color}; font-size:22px; font-weight:bold;'>{waste_pct:.1f}%</span>", unsafe_allow_html=True)
+                        st.pyplot(fig)
+                        plt.close(fig)
+                        
+                        st.subheader("Покрокова інструкція для майстра")
+                        
+                        if strategy_name == "eco":
+                            strat_desc = "Цей метод зміщує всі обрізки до далеких стін для швидкості укладання."
+                        elif strategy_name == "aes":
+                            strat_desc = "Метод відцентровує розкладку, щоб уникнути тонких смужок (менше 5 см) біля стін та отворів."
+                        else:
+                            strat_desc = "Цей метод є золотою серединою: він уникає екстремально тонких смужок, але не роздуває бюджет."
 
-                        st.markdown(f"""
-                        1.  **Точка відліку:** Лівий нижній кут приміщення.
-                        2.  **Підготовка:** {start_action}
-                        3.  **Перший ряд:** Продовжуйте укладання від кутової деталі вправо та вгору.
-                        4.  **Основне полотно:** Заповніть центральну частину цілими плитками.
-                        5.  **Фінальний етап:** Заміряйте та виріжте фрагменти для примикання до стін.
-                        """)
-                    else:
-                        st.markdown(f"""
-                        *Оскільки приміщення має нестандартну форму, укладання починається не з кута, а за базовими осями.*
-                        1.  **Розмітка лазером:** Знайдіть найлівішу та найнижчу точки кімнати. Відступіть від них **{ox:.1f} см вправо** та **{oy:.1f} см вгору**.
-                        2.  **Базові осі:** Побудуйте в цих точках дві перпендикулярні лінії (лазерним рівнем або шнуром). Перетин цих ліній — це стартовий вузол вашої сітки.
-                        3.  **Укладання хреста:** Викладіть два напрямні ряди з **цілих плиток** уздовж цих лазерних осей.
-                        4.  **Основне полотно:** Заповніть простір між осями цілими плитками.
-                        5.  **Підрізка косих кутів:** Всі елементи, що примикають до косих стін, вирізаються за місцем за допомогою малки (кутоміра) або картонних шаблонів в останню чергу.
-                        """)
+                        st.info(f"**Логіка розкладки:** {strat_desc}")
+                        
+                        if room_type in ["Прямокутник", "Г-подібна"]:
+                            if ox == 0 and oy == 0:
+                                start_action = "Візьміть **ЦІЛУ плитку** і встановіть її рівно в кут. Жодних підрізок для стартової точки не потрібно!"
+                            else:
+                                start_action = f"Відріжте від цілої плитки кутовий елемент розміром **Ширина {ox:.1f} см, Довжина {oy:.1f} см**. Встановіть його у кут."
 
-                with tab1:
-                    draw_result_plot(eco_whole, eco_cuts, best_eco_x, best_eco_y, "#FFC107", "eco", room_type)
-                with tab2:
-                    draw_result_plot(aes_whole, aes_cuts, best_aes_x, best_aes_y, "#4CAF50", "aes", room_type)
-                with tab3:
-                    draw_result_plot(bal_whole, bal_cuts, bal_x, bal_y, "#03A9F4", "bal", room_type)
+                            st.markdown(f"""
+                            1.  **Точка відліку:** Лівий нижній кут приміщення.
+                            2.  **Підготовка:** {start_action}
+                            3.  **Перший ряд:** Продовжуйте укладання від кутової деталі вправо та вгору.
+                            4.  **Основне полотно:** Заповніть центральну частину цілими плитками.
+                            5.  **Фінальний етап:** Заміряйте та виріжте фрагменти для примикання до стін.
+                            """)
+                        else:
+                            st.markdown(f"""
+                            *Оскільки приміщення має нестандартну форму, укладання починається не з кута, а за базовими осями.*
+                            1.  **Розмітка лазером:** Знайдіть найлівішу та найнижчу точки кімнати. Відступіть від них **{ox:.1f} см вправо** та **{oy:.1f} см вгору**.
+                            2.  **Базові осі:** Побудуйте в цих точках дві перпендикулярні лінії (лазерним рівнем або шнуром). Перетин цих ліній — це стартовий вузол вашої сітки.
+                            3.  **Укладання хреста:** Викладіть два напрямні ряди з **цілих плиток** уздовж цих лазерних осей.
+                            4.  **Основне полотно:** Заповніть простір між осями цілими плитками.
+                            5.  **Підрізка косих кутів:** Всі елементи, що примикають до косих стін, вирізаються за місцем за допомогою малки (кутоміра) або картонних шаблонів в останню чергу.
+                            """)
+
+                    with tab1:
+                        draw_result_plot(eco_whole, eco_cuts, best_eco_x, best_eco_y, "#FFC107", "eco", room_type)
+                    with tab2:
+                        draw_result_plot(aes_whole, aes_cuts, best_aes_x, best_aes_y, "#4CAF50", "aes", room_type)
+                    with tab3:
+                        draw_result_plot(bal_whole, bal_cuts, bal_x, bal_y, "#03A9F4", "bal", room_type)
 
             except Exception as e:
                 st.error(f"Сталася помилка під час оптимізації: {e}")
