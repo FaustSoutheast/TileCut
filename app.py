@@ -130,26 +130,31 @@ with col2:
     st.subheader("Попередні розрахунки")
     
     if len(room_coords) > 2:
-        area_m2 = Polygon(room_coords).area / 10000
-        holes_area = sum([(h['w'] * h['h']) for h in st.session_state.holes]) / 10000
-        net_area = area_m2 - holes_area
+        room_poly = Polygon(room_coords)
         
-        st.metric("Чиста площа підлоги", f"{net_area:.2f} м²") 
-        
-        tile_area = (tile_w * tile_h) / 10000
-        est_tiles = int((net_area / tile_area) * 1.1)
-        
-        st.metric("Орієнтовна кількість плитки", f"{est_tiles} шт")
-        
-        st.divider()
-        total_labor = net_area * labor_cost
-        remaining_for_tiles = budget - total_labor
-        
-        if remaining_for_tiles > 0:
-            price_per_tile = remaining_for_tiles / est_tiles
-            st.success(f"Можна обрати плитку до **{price_per_tile:.0f} грн/шт**")
+        if room_poly.area > 0:
+            area_m2 = room_poly.area / 10000
+            holes_area = sum([(h['w'] * h['h']) for h in st.session_state.holes]) / 10000
+            net_area = area_m2 - holes_area
+            
+            st.metric("Чиста площа підлоги", f"{net_area:.2f} м²") 
+            
+            tile_area = (tile_w * tile_h) / 10000
+            est_tiles = int((net_area / tile_area) * 1.1)
+            
+            st.metric("Орієнтовна кількість плитки", f"{est_tiles} шт")
+            
+            st.divider()
+            total_labor = net_area * labor_cost
+            remaining_for_tiles = budget - total_labor
+            
+            if remaining_for_tiles > 0:
+                price_per_tile = remaining_for_tiles / est_tiles
+                st.success(f"Можна обрати плитку до **{price_per_tile:.0f} грн/шт**")
+            else:
+                st.error("Бюджет замалий навіть для оплати роботи майстра.")
         else:
-            st.error("Бюджет замалий навіть для оплати роботи майстра.")
+            st.warning("Площа приміщення нульова, розрахунок неможливий.")
 
 st.divider()
 col_empty1, col_button, col_empty2 = st.columns([1, 2, 1])
@@ -157,8 +162,13 @@ col_empty1, col_button, col_empty2 = st.columns([1, 2, 1])
 with col_button:
     if st.button("Запустити алгоритм", use_container_width=True):
         if len(room_coords) > 2:
-            try:
-                import math
+            room_poly = Polygon(room_coords)
+            
+            if room_poly.area <= 0:
+                st.error("Алгоритм зупинено: введені точки лежать на одній лінії. Кімната не має площі.")
+            else:
+                try:
+                    import math
                 
                 room_poly = Polygon(room_coords)
                 for hole in st.session_state.holes:
