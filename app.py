@@ -88,34 +88,39 @@ with col1:
         try:
             room_poly = Polygon(room_coords)
             
-            fig, ax = plt.subplots(figsize=(8, 6))
-            fig.patch.set_facecolor('#0e1117')
-            ax.set_facecolor('#1a1c24')
-            
-            # БЕЗПЕЧНЕ МАЛЮВАННЯ (На випадок складних форм з отворами)
-            if room_poly.geom_type == 'Polygon':
-                polys_to_draw = [room_poly]
-            elif room_poly.geom_type == 'MultiPolygon':
-                polys_to_draw = list(room_poly.geoms)
+            # --- НОВИЙ КОД: Перевірка на вироджений полігон ---
+            if room_poly.area <= 0:
+                st.error("Помилка: Введені точки лежать на одній лінії і не утворюють площини (площа нульова).")
             else:
-                polys_to_draw = []
+                # --- Ваш існуючий код малювання зміщується на один Tab вправо ---
+                fig, ax = plt.subplots(figsize=(8, 6))
+                fig.patch.set_facecolor('#0e1117')
+                ax.set_facecolor('#1a1c24')
                 
-            for poly in polys_to_draw:
-                x_pts, y_pts = poly.exterior.xy
-                ax.fill(x_pts, y_pts, alpha=0.3, fc='#deff9a', ec='#deff9a', lw=2)
-            
-            # Малюємо отвори
-            for hole in st.session_state.holes:
-                hx = [hole['x'], hole['x'] + hole['w'], hole['x'] + hole['w'], hole['x']]
-                hy = [hole['y'], hole['y'], hole['y'] + hole['h'], hole['y'] + hole['h']]
-                ax.fill(hx, hy, fc='#ff4b4b', alpha=0.8, label="Отвір")
+                # БЕЗПЕЧНЕ МАЛЮВАННЯ (На випадок складних форм з отворами)
+                if room_poly.geom_type == 'Polygon':
+                    polys_to_draw = [room_poly]
+                elif room_poly.geom_type == 'MultiPolygon':
+                    polys_to_draw = list(room_poly.geoms)
+                else:
+                    polys_to_draw = []
+                    
+                for poly in polys_to_draw:
+                    x_pts, y_pts = poly.exterior.xy
+                    ax.fill(x_pts, y_pts, alpha=0.3, fc='#deff9a', ec='#deff9a', lw=2)
+                
+                # Малюємо отвори
+                for hole in st.session_state.holes:
+                    hx = [hole['x'], hole['x'] + hole['w'], hole['x'] + hole['w'], hole['x']]
+                    hy = [hole['y'], hole['y'], hole['y'] + hole['h'], hole['y'] + hole['h']]
+                    ax.fill(hx, hy, fc='#ff4b4b', alpha=0.8, label="Отвір")
 
-            ax.set_aspect('equal')
-            ax.tick_params(colors='white')
-            plt.grid(color='#333', linestyle='--', alpha=0.5)
-            st.pyplot(fig)
-            plt.close(fig)
-            
+                ax.set_aspect('equal')
+                ax.tick_params(colors='white')
+                plt.grid(color='#333', linestyle='--', alpha=0.5)
+                st.pyplot(fig)
+                plt.close(fig)
+                
         except Exception as e:
             st.error(f"Помилка побудови геометрії. Перевірте координати. ({e})")
     else:
